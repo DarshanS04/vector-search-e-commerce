@@ -2,6 +2,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Navbar from "@/components/Navbar";
+import ProductCard from "@/components/ProductCard";
 
 interface Product {
   _id: string;
@@ -16,10 +18,10 @@ interface Product {
 export default function HomePage() {
   const [query, setQuery] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
-  const [initialCatalog, setInitialCatalog] = useState<Product[]>([]); // Client-side cache for full catalog
+  const [initialCatalog, setInitialCatalog] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // 1. INITIAL MOUNT EFFECT: Calls the brand-new standalone /api/products route once
+  // 1. INITIAL MOUNT EFFECT: Load standard inventory catalog setup
   useEffect(() => {
     const loadInitialCatalog = async () => {
       setLoading(true);
@@ -28,51 +30,20 @@ export default function HomePage() {
         const data = await res.json();
         if (data.success) {
           setProducts(data.products);
-          setInitialCatalog(data.products); // Save a backup copy to prevent redundant API queries later
+          setInitialCatalog(data.products);
         }
       } catch (error) {
-        console.error("Failed to load initial catalog from products API:", error);
+        console.error("Failed to load initial catalog:", error);
       } finally {
         setLoading(false);
       }
     };
 
     loadInitialCatalog();
-  }, []); // Empty dependency array ensures this runs exactly once on mount
+  }, []);
 
-  // 2. SEARCH DEBOUNCE EFFECT: Handles dynamic vector queries exclusively
-  // useEffect(() => {
-  //   // If the query is empty or cleared, immediately roll back to the full catalog cache
-  //   if (query.trim() === "") {
-  //     setProducts(initialCatalog);
-  //     return;
-  //   }
-
-  //   const delayDebounceFn = setTimeout(async () => {
-  //     setLoading(true);
-  //     try {
-  //       const params = new URLSearchParams({ q: query });
-  //       const res = await fetch(`/api/search?${params.toString()}`);
-  //       const data = await res.json();
-
-  //       if (data.success) {
-  //         setProducts(data.products); // Overwrite listing UI with vector search results
-  //       }
-  //     } catch (error) {
-  //       console.error("Failed to fetch search results from search API:", error);
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   }, 300); // Waits 300ms after user stops typing to save transformer execution overhead
-
-  //   return () => clearTimeout(delayDebounceFn);
-  // }, [query, initialCatalog]); // Re-runs cleanly when the user inputs data or cache loads
-
-
-
-  // 2. SEARCH DEBOUNCE EFFECT: Handles dynamic vector queries exclusively
+  // 2. SEARCH DEBOUNCE EFFECT: Process vector results sorted by similarity score
   useEffect(() => {
-    // If the input box is cleared, instantly reset to the cached storefront layout
     if (query.trim() === "") {
       setProducts(initialCatalog);
       return;
@@ -86,17 +57,14 @@ export default function HomePage() {
         const data = await res.json();
 
         if (data.success) {
-          // Explicitly sort products in descending order of their match score (highest score first)
+          // Client sorting step guarantees strict descending score rendering order
           const sortedProducts = [...data.products].sort((a, b) => {
-            const scoreA = a.score ?? 0;
-            const scoreB = b.score ?? 0;
-            return scoreB - scoreA; // Descending sort logic
+            return (b.score ?? 0) - (a.score ?? 0);
           });
-
-          setProducts(sortedProducts); // Overwrite listing UI with perfectly sorted results
+          setProducts(sortedProducts);
         }
       } catch (error) {
-        console.error("Failed to fetch search results from search API:", error);
+        console.error("Failed to fetch search results:", error);
       } finally {
         setLoading(false);
       }
@@ -107,19 +75,8 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
-      {/* Navbar / Header */}
-      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-xl font-bold tracking-tight text-indigo-600">eCommerce</span>
-              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-100">
-                AI Vector Search
-              </span>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Reusable Header Navbar */}
+      <Navbar />
 
       <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         {/* Search Hero Section */}
@@ -170,47 +127,7 @@ export default function HomePage() {
         ) : (
           <div className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 xl:gap-x-8">
             {products.map((product) => (
-              <div key={product._id} className="group relative flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
-                {/* Product Image Placeholder Container */}
-                <div className="aspect-h-1 aspect-w-1 w-full bg-gray-100 p-4 sm:aspect-none h-48 flex items-center justify-center overflow-hidden border-b border-gray-100">
-                  <img
-                    src={
-                      product.url && product.url.includes("images.unsplash.com")
-                        ? product.url // Use if it's already a direct raw source link
-                        : `https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80` // Fallback clean image
-                    }
-                    alt={product.title}
-                    className="h-full w-full object-cover object-center transition-all group-hover:scale-105"
-                  />
-                  {/* AI Match Score Badge (Only visible when searching) */}
-                  {product.score !== undefined && (
-                    <span className="absolute top-3 right-3 rounded-md bg-indigo-600 px-2 py-1 text-xs font-semibold text-white shadow-sm">
-                      Match: {Math.round(product.score * 100)}%
-                    </span>
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className="flex flex-1 flex-col p-5">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-1">
-                    {product.category}
-                  </span>
-                  <h3 className="text-base font-bold text-gray-900 line-clamp-1">
-                    {product.title}
-                  </h3>
-                  <p className="mt-2 text-sm text-gray-500 line-clamp-2 flex-1">
-                    {product.description}
-                  </p>
-                  <div className="mt-4 flex items-center justify-between border-t border-gray-50 pt-4">
-                    <span className="text-lg font-black text-gray-900">
-                      ₹{product.price}
-                    </span>
-                    <button className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10">
-                      View details
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <ProductCard key={product._id} product={product} />
             ))}
           </div>
         )}
